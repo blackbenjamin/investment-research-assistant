@@ -42,13 +42,23 @@ class Settings(BaseSettings):
     @property
     def CORS_ORIGINS(self) -> List[str]:
         """Return CORS origins as a list"""
-        return [
+        # Base origins
+        origins = [
             "http://localhost:3000",
             "http://localhost:3001",
             "http://127.0.0.1:3000",
             "http://127.0.0.1:3001",
             "https://projects.benjaminblack.consulting"
         ]
+        
+        # Add CORS_ORIGINS from environment variable if set (comma-separated)
+        cors_env = os.getenv("CORS_ORIGINS", "")
+        if cors_env:
+            # Split by comma and strip whitespace
+            additional_origins = [origin.strip() for origin in cors_env.split(",") if origin.strip()]
+            origins.extend(additional_origins)
+        
+        return origins
 
 
 # Create global settings instance
