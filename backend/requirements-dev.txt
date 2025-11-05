@@ -1,0 +1,15 @@
+# Include runtime requirements
+-r requirements.txt
+
+# Development tools
+pytest==8.3.3
+pytest-asyncio==0.24.0
+black==24.10.0
+ruff==0.7.3
+mypy==1.13.0
+
+# Document processing (heavier dependencies for local setup)
+pdfplumber==0.11.4
+
+# Testing utilities
+pytest-cov==6.0.0

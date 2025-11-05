@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Demo data (keep structure, ignore large files)
+demo_data/documents/*.pdf
+!demo_data/documents/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+
+# Planning and internal documentation (not needed for execution)
+PROJECT_SUMMARY.md
+PROJECT_TREE.txt
+ROADMAP.md
+START_HERE.md
+QUICKSTART.md
+setup.sh
+docs/ARCHITECTURE.md
+docs/DEPLOYMENT.md
+
+# Keep essential READMEs:
+# README.md (root)
+# frontend/README.md
+# backend/README.md (if exists)
+
