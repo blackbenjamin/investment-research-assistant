@@ -117,17 +117,20 @@ async def list_documents():
     Returns unique document names from Pinecone metadata.
     """
     try:
-        # Get unique document names from Pinecone by querying with a dummy vector
-        # We'll use a zero vector to get all documents, then extract unique names
         unique_docs = set()
         
         try:
-            # Query Pinecone to get sample vectors and extract unique document names
-            # Using a dummy query vector filled with zeros
-            dummy_vector = [0.0] * rag_service.pinecone_service.index.dimension if rag_service.pinecone_service.index else [0.0] * 3072
+            # Use a meaningful query to get document metadata
+            # Query with a common financial term to get diverse results
+            from services.embedding_service import EmbeddingService
+            embedding_service = EmbeddingService()
+            query_text = "financial document company"
+            query_embedding = embedding_service.generate_embedding(query_text)
+            
+            # Get a large sample of results
             results = rag_service.pinecone_service.search(
-                query_vector=dummy_vector,
-                top_k=1000,  # Get a large sample
+                query_vector=query_embedding,
+                top_k=500,  # Get a large sample
                 namespace=""
             )
             
@@ -137,6 +140,9 @@ async def list_documents():
                 doc_name = metadata.get('document_name')
                 if doc_name:
                     unique_docs.add(doc_name)
+            
+            logger.info(f"Found {len(unique_docs)} unique documents from Pinecone")
+            
         except Exception as e:
             logger.warning(f"Could not fetch documents from Pinecone: {e}. Using file system fallback.")
             # Fallback: list files from docs directory
