@@ -156,11 +156,13 @@ async def list_documents():
         
         for doc_name in sorted(unique_docs):
             file_path = docs_path / doc_name
+            # In production (Railway), files may not exist on filesystem
+            # but we still want to show them if they're in Pinecone
             file_size = file_path.stat().st_size if file_path.exists() else None
             
             documents.append(DocumentInfo(
                 name=doc_name,
-                status="available" if file_path.exists() else "missing",
+                status="available",  # Always show as available if found in Pinecone
                 file_size=file_size
             ))
         

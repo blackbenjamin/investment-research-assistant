@@ -18,13 +18,24 @@ export default function ChatInterface({}: ChatInterfaceProps) {
     const fetchDocuments = async () => {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-        const response = await fetch(`${apiUrl}/api/v1/documents`);
+        console.log(`[ChatInterface] Fetching documents from: ${apiUrl}/api/v1/documents`);
+        
+        const response = await fetch(`${apiUrl}/api/v1/documents`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        
+        console.log(`[ChatInterface] Documents response status: ${response.status}`);
         
         if (response.ok) {
           const data = await response.json();
+          console.log(`[ChatInterface] Documents received:`, data);
           setDocuments(data);
         } else {
-          console.error("Failed to fetch documents:", response.status);
+          const errorText = await response.text();
+          console.error("Failed to fetch documents:", response.status, errorText);
         }
       } catch (error) {
         console.error("Error fetching documents:", error);
