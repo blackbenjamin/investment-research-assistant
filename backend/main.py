@@ -132,7 +132,9 @@ async def health_check():
             "api": "ok",
             "pinecone": "ok",  # We'll add real checks later
             "openai": "ok"
-        }
+        },
+        "cors_origins": settings.CORS_ORIGINS,
+        "cors_origins_count": len(settings.CORS_ORIGINS)
     }
 
 
