@@ -3,7 +3,7 @@ RAG Service
 
 Retrieval-Augmented Generation pipeline for answering questions
 using document context from Pinecone vector store.
-Supports hybrid search (semantic + keyword).
+Supports hybrid search (semantic + keyword) and Cohere reranking.
 """
 import logging
 import re
@@ -16,6 +16,14 @@ from services.pinecone_service import PineconeService
 
 logger = logging.getLogger(__name__)
 
+# Optional Cohere import for reranking
+try:
+    import cohere
+    COHERE_AVAILABLE = True
+except ImportError:
+    COHERE_AVAILABLE = False
+    logger.warning("Cohere not available. Reranking will be disabled.")
+
 
 class RAGService:
     """Service for RAG-based question answering"""
@@ -26,6 +34,16 @@ class RAGService:
         self.pinecone_service = PineconeService()
         self.llm_client = OpenAI(api_key=settings.OPENAI_API_KEY)
         self.llm_model = settings.OPENAI_MODEL
+        
+        # Initialize Cohere client if API key is available
+        self.cohere_client = None
+        if COHERE_AVAILABLE and settings.COHERE_API_KEY:
+            try:
+                self.cohere_client = cohere.Client(api_key=settings.COHERE_API_KEY)
+                logger.info("Cohere reranking enabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Cohere client: {e}")
+                self.cohere_client = None
         
         # Ensure Pinecone index exists
         self.pinecone_service.create_index_if_not_exists()
@@ -235,6 +253,83 @@ class RAGService:
         
         return final_results
     
+    def _rerank_results(
+        self,
+        query: str,
+        results: List[Dict[str, Any]],
+        top_k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Rerank search results using Cohere's rerank API.
+        
+        Args:
+            query: User's question
+            results: List of search results with metadata
+            top_k: Number of results to return after reranking
+            
+        Returns:
+            Reranked list of results
+        """
+        if not self.cohere_client or not results:
+            logger.debug("Cohere reranking skipped: client not available or no results")
+            return results[:top_k]
+        
+        try:
+            # Prepare documents for reranking
+            documents = []
+            for result in results:
+                metadata = result.get('metadata', {})
+                text = metadata.get('text', '')
+                doc_name = metadata.get('document_name', 'Unknown')
+                page = metadata.get('page_number', 'N/A')
+                
+                # Format document for reranking
+                doc_text = f"[{doc_name}, Page {page}] {text[:500]}"
+                documents.append(doc_text)
+            
+            logger.info(f"Reranking {len(documents)} results with Cohere")
+            
+            # Call Cohere rerank API
+            # Cohere rerank API expects query and documents list
+            rerank_response = self.cohere_client.rerank(
+                model='rerank-english-v3.0',  # Cohere's latest rerank model
+                query=query,
+                documents=documents,
+                top_n=top_k,
+                return_documents=False  # We'll keep our metadata
+            )
+            
+            # Map reranked results back to original result structure
+            reranked_results = []
+            for result_item in rerank_response.results:
+                original_index = result_item.index
+                relevance_score = result_item.relevance_score
+                
+                # Get original result
+                original_result = results[original_index].copy()
+                
+                # Update score with rerank score (normalize to 0-1 range)
+                # Cohere scores are typically 0-1, but we'll use them directly
+                original_result['rerank_score'] = relevance_score
+                
+                # Update the main score with rerank score for sorting
+                # Cohere scores are typically in 0-1 range
+                original_result['score'] = relevance_score
+                
+                reranked_results.append(original_result)
+            
+            logger.info(
+                f"Cohere reranking completed: "
+                f"top score={max(r['rerank_score'] for r in reranked_results):.3f}"
+            )
+            
+            return reranked_results
+            
+        except Exception as e:
+            logger.error(f"Error during Cohere reranking: {e}")
+            # Fallback to original results
+            return results[:top_k]
+    
     def generate_answer(
         self,
         query: str,
@@ -339,23 +434,37 @@ Format your response professionally and include references to the source documen
             Dict with answer, sources, and query
         """
         # Step 1: Retrieve relevant chunks using hybrid search
-        chunks = self.search(query, top_k=top_k, filter_dict=filter_dict, use_hybrid=True)
+        # If reranking is enabled, retrieve more chunks initially
+        initial_top_k = top_k * 2 if use_reranking else top_k
+        chunks = self.search(query, top_k=initial_top_k, filter_dict=filter_dict, use_hybrid=True)
         
-        # Step 2: Generate answer with context (returns answer and cost)
+        # Step 2: Apply reranking if enabled
+        if use_reranking and chunks:
+            chunks = self._rerank_results(query, chunks, top_k=top_k)
+            logger.info(f"Reranked {len(chunks)} results using Cohere")
+        
+        # Step 3: Generate answer with context (returns answer and cost)
         answer, llm_cost = self.generate_answer(query, chunks)
         
-        # Step 3: Estimate embedding cost
+        # Step 4: Estimate embedding cost
         query_length = len(query.split())
         embedding_tokens = query_length * 1.3  # Approximation
         embedding_cost = (embedding_tokens / 1000) * 0.00013  # text-embedding-3-large
         
-        # Step 4: Estimate Pinecone cost (rough estimate)
+        # Step 5: Estimate Pinecone cost (rough estimate)
         pinecone_cost = top_k * 0.0001
         
-        # Total cost
-        total_cost = embedding_cost + llm_cost + pinecone_cost
+        # Step 6: Estimate Cohere reranking cost if used
+        rerank_cost = 0.0
+        if use_reranking and self.cohere_client:
+            # Cohere rerank pricing: $1.00 per 1,000 requests (as of 2024)
+            # Each rerank operation counts as 1 request
+            rerank_cost = 0.001  # $0.001 per rerank operation
         
-        # Step 5: Format sources with search method metadata
+        # Total cost
+        total_cost = embedding_cost + llm_cost + pinecone_cost + rerank_cost
+        
+        # Step 7: Format sources with search method metadata
         sources = []
         for chunk in chunks:
             metadata = chunk.get('metadata', {})
@@ -366,19 +475,25 @@ Format your response professionally and include references to the source documen
                 'text': metadata.get('text', '')[:500],  # First 500 chars
                 'score': chunk.get('score', 0.0),
                 'search_method': search_method,  # 'semantic', 'keyword', or 'hybrid'
-                'matched_keywords': chunk.get('matched_keywords', []) if chunk.get('matched_keywords') else None
+                'matched_keywords': chunk.get('matched_keywords', []) if chunk.get('matched_keywords') else None,
+                'rerank_score': chunk.get('rerank_score')  # Cohere rerank score if available
             })
+        
+        cost_breakdown = {
+            'embedding': embedding_cost,
+            'llm': llm_cost,
+            'pinecone': pinecone_cost
+        }
+        if rerank_cost > 0:
+            cost_breakdown['rerank'] = rerank_cost
         
         return {
             'answer': answer,
             'sources': sources,
             'query': query,
             'cost_usd': total_cost,
-            'cost_breakdown': {
-                'embedding': embedding_cost,
-                'llm': llm_cost,
-                'pinecone': pinecone_cost
-            }
+            'cost_breakdown': cost_breakdown,
+            'reranked': use_reranking and self.cohere_client is not None
         }
 
 

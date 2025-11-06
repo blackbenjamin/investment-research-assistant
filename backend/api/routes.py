@@ -42,7 +42,7 @@ class QueryRequest(BaseModel):
     """Request model for research queries"""
     query: str = Field(..., min_length=3, max_length=2000, description="User query (3-2000 characters)")
     top_k: Optional[int] = Field(default=5, ge=1, le=20, description="Number of results (1-20)")
-    use_reranking: Optional[bool] = Field(default=False, description="Use reranking (future feature)")
+    use_reranking: Optional[bool] = Field(default=False, description="Use Cohere reranking to improve result quality")
     
     @field_validator('query')
     @classmethod
@@ -136,11 +136,18 @@ async def query_documents(request: QueryRequest, req: Request):
         logger.info(f"Processing query: {validation_result.sanitized_query[:100]}... (top_k={validated_top_k}, threat_score={validation_result.threat_score:.2f})")
         
         # Use RAG service to get answer with sanitized query
+        # Enable reranking if requested (default: False, but can be enabled via API)
+        use_reranking = request.use_reranking if request.use_reranking is not None else False
+        
         result = rag_service.query(
             query=validation_result.sanitized_query,
             top_k=validated_top_k,
-            use_reranking=request.use_reranking or False
+            use_reranking=use_reranking
         )
+        
+        # Log if reranking was used
+        if result.get('reranked'):
+            logger.info(f"Reranking applied for query: {validation_result.sanitized_query[:100]}...")
         
         # Track cost
         cost_info = add_cost(
