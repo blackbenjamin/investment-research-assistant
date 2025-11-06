@@ -205,21 +205,29 @@ async def query_documents(request: QueryRequest, req: Request):
                     f"Original sources: {len(result['sources'])}, Scores: {[f\"{s.get('score', 0.0):.3f}\" for s in result['sources']]}"
                 )
             
-            # If no sources pass the threshold but we have sources, log a warning
+            # If no sources pass the threshold but we have sources, check if we should show any
             if len(filtered_sources) == 0 and len(result['sources']) > 0:
+                max_score = max(s.get('score', 0.0) for s in result['sources'])
+                min_score = min(s.get('score', 0.0) for s in result['sources'])
+                
                 logger.warning(
                     f"No sources passed relevance threshold ({MIN_RELEVANCE_SCORE*100:.0f}%). "
                     f"All {len(result['sources'])} sources filtered out. "
-                    f"Score range: {min(s.get('score', 0.0) for s in result['sources']):.3f} - {max(s.get('score', 0.0) for s in result['sources']):.3f}"
+                    f"Score range: {min_score:.3f} - {max_score:.3f}"
                 )
+                
                 # For comparison queries, show at least the top source even if below threshold
-                # This ensures users see some sources for comparison queries
-                if is_comparison:
-                    logger.info("Comparison query: Including top source(s) even if below threshold")
+                # BUT only if the top score is reasonable (>= 0.10) to avoid showing sources for nonsense queries
+                ABSOLUTE_MINIMUM_SCORE = 0.10  # Don't show sources if even the best match is below this
+                
+                if is_comparison and max_score >= ABSOLUTE_MINIMUM_SCORE:
+                    logger.info(f"Comparison query: Including top source(s) even if below threshold (top score: {max_score:.3f})")
                     # Sort by score descending and take top 2
                     sorted_sources = sorted(result['sources'], key=lambda x: x.get('score', 0.0), reverse=True)
                     filtered_sources = sorted_sources[:2]  # Take top 2 sources
                     logger.info(f"Including {len(filtered_sources)} top source(s) for comparison query")
+                elif max_score < ABSOLUTE_MINIMUM_SCORE:
+                    logger.info(f"Top source score ({max_score:.3f}) below absolute minimum ({ABSOLUTE_MINIMUM_SCORE:.3f}). Likely a nonsense query - not showing sources.")
             
             # Format sources with search method metadata
             sources = [
