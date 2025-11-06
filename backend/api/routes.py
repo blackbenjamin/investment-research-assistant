@@ -200,9 +200,10 @@ async def query_documents(request: QueryRequest, req: Request):
             ]
             
             if len(filtered_sources) < len(result['sources']):
+                score_list = [f"{s.get('score', 0.0):.3f}" for s in result['sources']]
                 logger.info(
                     f"Filtered out {len(result['sources']) - len(filtered_sources)} sources below {MIN_RELEVANCE_SCORE*100:.0f}% relevance threshold. "
-                    f"Original sources: {len(result['sources'])}, Scores: {[f\"{s.get('score', 0.0):.3f}\" for s in result['sources']]}"
+                    f"Original sources: {len(result['sources'])}, Scores: {score_list}"
                 )
             
             # If no sources pass the threshold but we have sources, check if we should show any
