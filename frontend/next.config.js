@@ -2,11 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  // This allows the app to work both directly and when proxied from /IRA-app
-  // When deployed to Vercel directly, basePath will be empty
-  // When proxied from projects.benjaminblack.consulting/IRA-app, assets will work
-  assetPrefix: process.env.NEXT_PUBLIC_BASE_PATH || '',
+  // Configure basePath for proxy usage
+  // This allows the app to work when proxied from /IRA-app
+  // The basePath is set via environment variable in Vercel
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
+  assetPrefix: process.env.NEXT_PUBLIC_BASE_PATH || '',
 }
 
 module.exports = nextConfig
