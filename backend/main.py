@@ -70,8 +70,8 @@ app.add_middleware(
 @app.middleware("http")
 async def verify_api_key(request: Request, call_next):
     """Verify API key for protected endpoints"""
-    # Skip auth for health check endpoints
-    if request.url.path in ["/", "/health", "/docs", "/openapi.json", "/redoc"]:
+    # Skip auth for health check endpoints and OPTIONS (preflight) requests
+    if request.url.path in ["/", "/health", "/docs", "/openapi.json", "/redoc"] or request.method == "OPTIONS":
         return await call_next(request)
     
     # Check if API keys are configured
