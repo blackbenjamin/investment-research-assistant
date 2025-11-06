@@ -186,7 +186,16 @@ async def query_documents(request: QueryRequest, req: Request):
             # Use lower threshold for comparison queries (they often have lower scores)
             # Use lower threshold when reranking is used (Cohere scores may be normalized differently)
             is_comparison = analysis_result.connectors and 'comparison' in analysis_result.connectors
+            
+            # Also check if query contains comparison keywords directly (fallback detection)
+            query_lower = validation_result.sanitized_query.lower()
+            if not is_comparison and ('compare' in query_lower or 'vs' in query_lower or 'versus' in query_lower):
+                is_comparison = True
+                logger.info("Comparison query detected via keyword fallback")
+            
             use_reranking_flag = result.get('reranked', False)
+            
+            logger.info(f"Query analysis: is_comparison={is_comparison}, connectors={analysis_result.connectors}, reranked={use_reranking_flag}")
             
             if is_comparison or use_reranking_flag:
                 MIN_RELEVANCE_SCORE = 0.20  # Lower threshold for comparison queries or reranked results
@@ -221,6 +230,8 @@ async def query_documents(request: QueryRequest, req: Request):
                 # BUT only if the top score is reasonable (>= 0.10) to avoid showing sources for nonsense queries
                 ABSOLUTE_MINIMUM_SCORE = 0.10  # Don't show sources if even the best match is below this
                 
+                logger.info(f"Checking fallback: is_comparison={is_comparison}, max_score={max_score:.3f}, absolute_min={ABSOLUTE_MINIMUM_SCORE:.3f}")
+                
                 if is_comparison and max_score >= ABSOLUTE_MINIMUM_SCORE:
                     logger.info(f"Comparison query: Including top source(s) even if below threshold (top score: {max_score:.3f})")
                     # Sort by score descending and take top 2
@@ -229,6 +240,8 @@ async def query_documents(request: QueryRequest, req: Request):
                     logger.info(f"Including {len(filtered_sources)} top source(s) for comparison query")
                 elif max_score < ABSOLUTE_MINIMUM_SCORE:
                     logger.info(f"Top source score ({max_score:.3f}) below absolute minimum ({ABSOLUTE_MINIMUM_SCORE:.3f}). Likely a nonsense query - not showing sources.")
+                elif not is_comparison:
+                    logger.info(f"Not a comparison query and no sources passed threshold. Not showing sources.")
             
             # Format sources with search method metadata
             sources = [
