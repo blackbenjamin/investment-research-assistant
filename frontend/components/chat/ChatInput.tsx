@@ -84,7 +84,10 @@ export default function ChatInput({
       {/* Reranking Toggle */}
       {onRerankingChange && (
         <div className="flex items-center h-12">
-          <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer hover:text-slate-300 transition-colors">
+          <label 
+            className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer hover:text-slate-300 transition-colors"
+            title="Cohere reranking improves search result quality by reordering results based on relevance to your query. This may slightly increase response time but provides more accurate answers."
+          >
             <input
               type="checkbox"
               checked={useReranking}
