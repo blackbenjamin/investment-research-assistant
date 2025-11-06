@@ -56,8 +56,9 @@ def main():
     pinecone_service = PineconeService()
     
     # Create Pinecone index if needed (auto-detects dimension from embedding model)
+    # Set force_recreate=False to preserve existing documents, True to wipe and recreate
     logger.info("Setting up Pinecone index...")
-    pinecone_service.create_index_if_not_exists(metric="cosine", force_recreate=True)
+    pinecone_service.create_index_if_not_exists(metric="cosine", force_recreate=False)
     
     # Get demo documents
     demo_data_dir = Path(__file__).parent.parent / 'demo_data' / 'documents'
