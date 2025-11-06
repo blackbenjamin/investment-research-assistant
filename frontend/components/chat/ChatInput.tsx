@@ -83,7 +83,7 @@ export default function ChatInput({
       
       {/* Reranking Toggle */}
       {onRerankingChange && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center h-12">
           <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer hover:text-slate-300 transition-colors">
             <input
               type="checkbox"
