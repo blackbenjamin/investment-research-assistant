@@ -314,15 +314,21 @@ class RAGService:
                 # Get original result
                 original_result = results[original_index].copy()
                 
-                # Update score with rerank score (normalize to 0-1 range)
-                # Cohere scores are typically 0-1, but we'll use them directly
-                original_result['rerank_score'] = relevance_score
+                # Preserve original semantic score for filtering (semantic scores are typically 0.7-0.95)
+                # Cohere rerank scores are typically 0.0-0.5, so we keep semantic score for threshold checks
+                original_semantic_score = original_result.get('score', 0.0)
+                original_result['semantic_score'] = original_semantic_score  # Preserve original
+                original_result['rerank_score'] = relevance_score  # Store rerank score separately
                 
-                # Update the main score with rerank score for sorting
-                # Cohere scores are typically in 0-1 range
-                original_result['score'] = relevance_score
+                # Use rerank score for ordering (reranking improves relevance order)
+                # But keep semantic score as main score for filtering thresholds
+                original_result['score'] = original_semantic_score  # Keep semantic score for filtering
+                original_result['rerank_relevance'] = relevance_score  # Store rerank score for reference
                 
                 reranked_results.append(original_result)
+            
+            # Sort by rerank score (better ordering) but keep semantic scores for filtering
+            reranked_results.sort(key=lambda x: x.get('rerank_relevance', 0.0), reverse=True)
             
             logger.info(
                 f"Cohere reranking completed: "
@@ -492,14 +498,20 @@ IMPORTANT: This query contains multiple parts ({query_analysis.question_count} p
         for chunk in chunks:
             metadata = chunk.get('metadata', {})
             search_method = chunk.get('search_method', 'semantic')
+            
+            # Use semantic score for filtering (preserved even after reranking)
+            # If reranking was used, rerank_score contains the Cohere score
+            semantic_score = chunk.get('semantic_score') or chunk.get('score', 0.0)
+            rerank_score = chunk.get('rerank_score') or chunk.get('rerank_relevance')
+            
             sources.append({
                 'document_name': metadata.get('document_name', 'Unknown'),
                 'page_number': metadata.get('page_number', 0),
                 'text': metadata.get('text', '')[:500],  # First 500 chars
-                'score': chunk.get('score', 0.0),
+                'score': semantic_score,  # Use semantic score for filtering thresholds
                 'search_method': search_method,  # 'semantic', 'keyword', or 'hybrid'
                 'matched_keywords': chunk.get('matched_keywords', []) if chunk.get('matched_keywords') else None,
-                'rerank_score': chunk.get('rerank_score')  # Cohere rerank score if available
+                'rerank_score': rerank_score  # Cohere rerank score if available (for reference)
             })
         
         cost_breakdown = {
