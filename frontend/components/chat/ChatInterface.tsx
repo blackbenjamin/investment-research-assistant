@@ -312,6 +312,34 @@ export default function ChatInterface({}: ChatInterfaceProps) {
         <div className="border-t border-slate-700 bg-slate-800/50 px-6 py-4">
           <ChatInput onSend={handleSendMessage} disabled={isLoading} />
         </div>
+
+        {/* Search Method Legend */}
+        <div className="border-t border-slate-700 bg-slate-800/30 px-6 py-3">
+          <div className="flex items-center gap-6 text-xs">
+            <span className="text-slate-500 font-medium">Search Methods:</span>
+            <div className="flex items-center gap-1">
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border bg-purple-500/20 text-purple-400 border-purple-500/30">
+                <span>✨</span>
+                <span>Semantic</span>
+              </span>
+              <span className="text-slate-600 ml-1">Conceptual understanding</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border bg-green-500/20 text-green-400 border-green-500/30">
+                <span>🔍</span>
+                <span>Keyword</span>
+              </span>
+              <span className="text-slate-600 ml-1">Exact term matching</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border bg-orange-500/20 text-orange-400 border-orange-500/30">
+                <span>🔥</span>
+                <span>Hybrid</span>
+              </span>
+              <span className="text-slate-600 ml-1">Both methods combined</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
