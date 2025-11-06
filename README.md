@@ -4,10 +4,15 @@ AI-powered RAG (Retrieval Augmented Generation) system for analyzing financial d
 
 ## 🚀 Features
 
-- **RAG Pipeline**: Semantic search across financial documents using OpenAI embeddings and Pinecone vector database
-- **Professional Chat Interface**: Dark-themed UI designed for finance professionals
+- **Hybrid Search**: Combines semantic search (conceptual understanding) with keyword search (exact term matching) for more accurate results
+- **Cohere Reranking**: Optional reranking improves result quality by reordering search results by relevance before generating answers
+- **Query Analysis**: Automatically detects multi-part questions and comparison queries, improving answer quality for complex questions
+- **Smart Source Filtering**: Only displays sources with relevance scores above 30% to reduce noise and improve answer quality
+- **Source Citations**: Every answer includes citations with document names, page numbers, relevance scores, and search method indicators
+- **Multi-Company Support**: Query documents from multiple companies (Apple, Microsoft, etc.) and compare results across companies
+- **Professional Chat Interface**: Dark-themed UI designed for finance professionals with auto-scroll and responsive design
 - **Document Management**: View and download uploaded financial documents
-- **Source Citations**: Every answer includes citations with page numbers and relevance scores
+- **Production Security**: API key authentication, rate limiting, cost tracking, and prompt injection protection
 - **Fast & Accurate**: Retrieves relevant context and generates answers using GPT-4
 
 ## 🏗️ Architecture
@@ -17,6 +22,8 @@ AI-powered RAG (Retrieval Augmented Generation) system for analyzing financial d
 - **Vector DB**: Pinecone for semantic search
 - **LLM**: OpenAI GPT-4 for answer generation
 - **Embeddings**: OpenAI text-embedding-3-large
+- **Reranking**: Cohere rerank API (optional)
+- **Security**: API key authentication, rate limiting, cost tracking
 
 ## 📁 Project Structure
 
@@ -42,6 +49,7 @@ investment-research-assistant/
 - Node.js 18+
 - OpenAI API key
 - Pinecone API key
+- Cohere API key (optional, for reranking feature)
 
 ### Backend Setup
 
@@ -107,24 +115,35 @@ Once the backend is running, visit:
 
 ### RAG Pipeline
 
-1. **Query Embedding**: User question is embedded using OpenAI
-2. **Semantic Search**: Pinecone retrieves top-k most relevant chunks
-3. **Context Assembly**: Retrieved chunks are formatted with metadata
-4. **Answer Generation**: GPT-4 generates answer with citations
+1. **Query Analysis**: Query is analyzed to detect multi-part questions and complexity
+2. **Query Embedding**: User question is embedded using OpenAI
+3. **Hybrid Search**: Combined semantic + keyword search across Pinecone vector database
+4. **Optional Reranking**: Cohere rerank API improves result relevance (can be enabled via checkbox)
+5. **Source Filtering**: Sources below 30% relevance are filtered out
+6. **Context Assembly**: Retrieved chunks are formatted with metadata
+7. **Answer Generation**: GPT-4 generates answer with citations (prompts enhanced for multi-part queries)
 
 ### Chat Interface
 
 - Real-time conversation with AI assistant
-- Expandable source citations showing document, page, and relevance
+- Auto-scroll to show responses at the top of the visible area
+- Expandable source citations showing document, page, relevance score, and search method (semantic/keyword/hybrid)
+- Search method legend explaining different search types
+- Reranking toggle to enable/disable Cohere reranking
 - Professional dark theme matching portfolio site aesthetic
 - Document list with download functionality
 
 ## 🔒 Security
 
-- Path traversal protection for file downloads
-- CORS configuration for production
-- Environment variable management
-- Input validation via Pydantic models
+- **API Key Authentication**: Middleware protects all endpoints with API key validation
+- **Rate Limiting**: 10 requests per minute per IP address
+- **Cost Tracking**: Daily cost limits ($20/day default) with automatic reset
+- **Prompt Injection Protection**: Query validation and sanitization prevents injection attacks
+- **Source Suppression**: Suspicious queries (threat_score > 0.5) don't expose document chunks
+- **Input Validation**: Pydantic models with length limits and sanitization
+- **Path Traversal Protection**: Secure file download handling
+- **CORS Configuration**: Hardened CORS with specific origins and methods
+- **Request Size Limits**: Max 1MB request body size
 
 ## 🚀 Deployment
 
@@ -151,16 +170,23 @@ The backend needs to be deployed separately. See deployment guide for options.
 
 ## 🚦 Roadmap
 
-### Week 3 (Future)
-- Hybrid search (semantic + keyword)
-- Query decomposition for complex questions
-- Reranking with Cohere
+### Completed ✅
+- ✅ Hybrid search (semantic + keyword)
+- ✅ Cohere reranking
+- ✅ Query analysis for multi-part questions
+- ✅ Smart source filtering (30% threshold)
+- ✅ Security hardening (API keys, rate limiting, cost tracking)
+- ✅ Multi-company document support
 
-### Week 4 (Future)
-- User authentication
-- Conversation history
-- Export conversations
-- Advanced filtering
+### Future Enhancements
+- Query decomposition: Execute separate queries for complex questions and merge results
+- Document upload UI: Web interface for adding new documents
+- Conversation history: Persistent chat history
+- Advanced filtering: Filter by document type, date, company
+- Export functionality: Export conversations to PDF/CSV
+- User authentication: User accounts and personalized collections
+- Streaming responses: Real-time answer generation
+- Cost analytics dashboard: Usage statistics and cost breakdowns
 
 ## 📝 License
 
@@ -172,4 +198,4 @@ Benjamin Black
 
 ---
 
-**Status**: ✅ Core RAG pipeline complete and working
+**Status**: ✅ Production-ready RAG system with hybrid search, reranking, query analysis, and security hardening. Fully deployed and operational.
