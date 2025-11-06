@@ -301,7 +301,7 @@ export default function ChatInterface({}: ChatInterfaceProps) {
                   Start Your Research
                 </h3>
                 <p className="mb-6 text-slate-400">
-                  Ask questions about Apple's financial documents
+                  Ask questions about financial documents
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
                   {[
