@@ -212,6 +212,14 @@ async def query_documents(request: QueryRequest, req: Request):
                     f"All {len(result['sources'])} sources filtered out. "
                     f"Score range: {min(s.get('score', 0.0) for s in result['sources']):.3f} - {max(s.get('score', 0.0) for s in result['sources']):.3f}"
                 )
+                # For comparison queries, show at least the top source even if below threshold
+                # This ensures users see some sources for comparison queries
+                if is_comparison:
+                    logger.info("Comparison query: Including top source(s) even if below threshold")
+                    # Sort by score descending and take top 2
+                    sorted_sources = sorted(result['sources'], key=lambda x: x.get('score', 0.0), reverse=True)
+                    filtered_sources = sorted_sources[:2]  # Take top 2 sources
+                    logger.info(f"Including {len(filtered_sources)} top source(s) for comparison query")
             
             # Format sources with search method metadata
             sources = [
