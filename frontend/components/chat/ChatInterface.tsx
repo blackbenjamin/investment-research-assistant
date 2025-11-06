@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import { Message, Source, DocumentInfo } from "../../types";
@@ -12,6 +12,8 @@ export default function ChatInterface({}: ChatInterfaceProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch documents on mount
   useEffect(() => {
@@ -55,6 +57,16 @@ export default function ChatInterface({}: ChatInterfaceProps) {
 
     fetchDocuments();
   }, []);
+
+  // Auto-scroll to bottom when messages change or when loading state changes
+  useEffect(() => {
+    if (messagesEndRef.current && messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages, isLoading]);
 
   const handleSendMessage = async (query: string) => {
     // Add user message
@@ -227,7 +239,7 @@ export default function ChatInterface({}: ChatInterfaceProps) {
         </div>
 
         {/* Messages Container */}
-        <div className="h-[500px] overflow-y-auto px-6 py-4 bg-slate-900/50">
+        <div ref={messagesContainerRef} className="h-[500px] overflow-y-auto px-6 py-4 bg-slate-900/50">
           {messages.length === 0 ? (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
