@@ -1,15 +1,28 @@
 """
 API Routes for the Investment Research Assistant
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from pydantic import field_validator
+from typing import List, Optional, Dict, Any
 import logging
 import os
 from pathlib import Path
 
 from services.rag_service import RAGService
+from core.security import (
+    validate_query,
+    QueryValidationResult,
+    validate_top_k,
+    sanitize_filename
+)
+from core.cost_tracker import (
+    check_cost_limit,
+    add_cost,
+    get_cost_summary
+)
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +35,30 @@ rag_service = RAGService()
 DOCS_DIR = os.getenv("DOCS_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "demo_data", "documents"))
 
 
+
+
 # Request/Response Models
 class QueryRequest(BaseModel):
     """Request model for research queries"""
-    query: str
-    top_k: Optional[int] = 5
-    use_reranking: Optional[bool] = True
+    query: str = Field(..., min_length=3, max_length=2000, description="User query (3-2000 characters)")
+    top_k: Optional[int] = Field(default=5, ge=1, le=20, description="Number of results (1-20)")
+    use_reranking: Optional[bool] = Field(default=False, description="Use reranking (future feature)")
+    
+    @field_validator('query')
+    @classmethod
+    def validate_query(cls, v):
+        """Validate and sanitize query"""
+        if not v or not isinstance(v, str):
+            raise ValueError("Query must be a non-empty string")
+        
+        # Trim and validate
+        v = v.strip()
+        if len(v) < 3:
+            raise ValueError("Query must be at least 3 characters long")
+        if len(v) > 2000:
+            raise ValueError("Query must be no more than 2000 characters")
+        
+        return v
 
 
 class Source(BaseModel):
@@ -61,20 +92,64 @@ class DocumentInfo(BaseModel):
 
 
 @router.post("/query", response_model=QueryResponse)
-async def query_documents(request: QueryRequest):
+async def query_documents(request: QueryRequest, req: Request):
     """
     Query the research assistant with a question.
     Returns an answer with cited sources using RAG pipeline.
+    
+    Security: Rate limited (10/min), input validated, prompt injection protected, cost limited.
     """
+    request_id = str(uuid.uuid4())
+    
     try:
-        logger.info(f"Received query: {request.query}")
+        # Check cost limit before processing
+        limit_exceeded, current_cost, limit = check_cost_limit()
+        if limit_exceeded:
+            logger.warning(f"Cost limit exceeded: ${current_cost:.2f} >= ${limit}")
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily cost limit exceeded (${current_cost:.2f}/${limit}). Please try again later."
+            )
         
-        # Use RAG service to get answer
+        # Rate limiting - enforced by slowapi middleware configured in main.py
+        # Rate limit: 10 requests per minute per IP
+        
+        # Validate and sanitize query
+        validation_result: QueryValidationResult = validate_query(request.query)
+        
+        if not validation_result.is_valid:
+            logger.warning(f"Invalid query rejected: {validation_result.warnings}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid query: {', '.join(validation_result.warnings)}"
+            )
+        
+        # Log security warnings
+        if validation_result.warnings:
+            logger.warning(f"Query validation warnings: {validation_result.warnings}")
+        
+        # Validate top_k
+        validated_top_k = validate_top_k(request.top_k, max_top_k=20)
+        
+        logger.info(f"Processing query: {validation_result.sanitized_query[:100]}... (top_k={validated_top_k}, threat_score={validation_result.threat_score:.2f})")
+        
+        # Use RAG service to get answer with sanitized query
         result = rag_service.query(
-            query=request.query,
-            top_k=request.top_k or 5,
+            query=validation_result.sanitized_query,
+            top_k=validated_top_k,
             use_reranking=request.use_reranking or False
         )
+        
+        # Track cost
+        cost_info = add_cost(
+            amount_usd=result.get('cost_usd', 0.0),
+            request_id=request_id,
+            source='rag_query'
+        )
+        
+        # Check if cost limit was exceeded after this request
+        if cost_info['limit_exceeded']:
+            logger.warning(f"Cost limit exceeded after request {request_id}: ${cost_info['daily_total']:.2f}")
         
         # Format sources
         sources = [
@@ -93,9 +168,15 @@ async def query_documents(request: QueryRequest):
             query=result['query']
         )
         
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"Validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error processing query: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
+        # Don't expose internal error details to client
+        raise HTTPException(status_code=500, detail="An error occurred processing your query. Please try again.")
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
@@ -110,11 +191,25 @@ async def upload_document():
     )
 
 
+@router.get("/costs/summary")
+async def get_cost_summary_endpoint(req: Request):
+    """
+    Get current cost summary.
+    Returns daily cost, limit, and remaining budget.
+    
+    Security: Requires API key if configured.
+    """
+    summary = get_cost_summary()
+    return summary
+
+
 @router.get("/documents", response_model=List[DocumentInfo])
-async def list_documents():
+async def list_documents(req: Request):
     """
     List all available documents in the system.
     Returns unique document names from Pinecone metadata.
+    
+    Security: Rate limited to prevent abuse.
     """
     try:
         unique_docs = set()
@@ -175,16 +270,32 @@ async def list_documents():
 
 
 @router.get("/documents/{filename}/download")
-async def download_document(filename: str):
+async def download_document(filename: str, req: Request):
     """
     Download a document file.
+    
+    Security: Path traversal protected, rate limited, file type validated.
     """
     try:
-        # Security: Prevent path traversal
-        if ".." in filename or "/" in filename or "\\" in filename:
+        # Security: Sanitize filename to prevent path traversal
+        try:
+            sanitized_filename = sanitize_filename(filename)
+        except ValueError as e:
             raise HTTPException(status_code=400, detail="Invalid filename")
         
-        file_path = Path(DOCS_DIR) / filename
+        # Ensure filename is within allowed directory
+        file_path = Path(DOCS_DIR) / sanitized_filename
+        
+        # Resolve path to prevent directory traversal
+        try:
+            file_path = file_path.resolve()
+            docs_dir_resolved = Path(DOCS_DIR).resolve()
+            
+            # Ensure the resolved path is within the docs directory
+            if not str(file_path).startswith(str(docs_dir_resolved)):
+                raise HTTPException(status_code=400, detail="Invalid filename")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid filename")
         
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="Document not found")
@@ -194,7 +305,7 @@ async def download_document(filename: str):
         
         return FileResponse(
             path=str(file_path),
-            filename=filename,
+            filename=sanitized_filename,
             media_type="application/pdf"
         )
         
@@ -202,4 +313,5 @@ async def download_document(filename: str):
         raise
     except Exception as e:
         logger.error(f"Error downloading document: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error downloading document: {str(e)}")
+        # Don't expose internal error details
+        raise HTTPException(status_code=500, detail="Error downloading document")

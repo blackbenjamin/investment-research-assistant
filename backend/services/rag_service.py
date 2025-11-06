@@ -5,9 +5,10 @@ Retrieval-Augmented Generation pipeline for answering questions
 using document context from Pinecone vector store.
 """
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from openai import OpenAI
 from core.config import settings
+from core.security import harden_prompt, sanitize_for_prompt
 from services.embedding_service import EmbeddingService
 from services.pinecone_service import PineconeService
 
@@ -66,7 +67,7 @@ class RAGService:
         query: str,
         context_chunks: List[Dict[str, Any]],
         max_tokens: int = 1000
-    ) -> str:
+    ) -> Tuple[str, float]:
         """
         Generate answer using LLM with retrieved context
         
@@ -76,10 +77,10 @@ class RAGService:
             max_tokens: Maximum tokens for response
             
         Returns:
-            Generated answer
+            Tuple of (generated_answer, cost_usd)
         """
         if not context_chunks:
-            return "I couldn't find any relevant information in the documents to answer your question."
+            return "I couldn't find any relevant information in the documents to answer your question.", 0.0
         
         # Build context from retrieved chunks
         context_parts = []
@@ -89,27 +90,24 @@ class RAGService:
             page = metadata.get('page_number', 'N/A')
             text = metadata.get('text', chunk.get('text', ''))
             
+            # Sanitize text before adding to context
+            sanitized_text = sanitize_for_prompt(text, max_length=1000)
+            
             context_parts.append(
                 f"[Source {i}] Document: {doc_name}, Page: {page}\n"
-                f"{text}\n"
+                f"{sanitized_text}\n"
             )
         
         context = "\n".join(context_parts)
         
-        # Build prompt
-        system_prompt = """You are an expert financial research assistant. Answer questions based ONLY on the provided document context. 
+        # Hardened prompt structure to prevent injection
+        system_prompt_base = """You are an expert financial research assistant. Answer questions based ONLY on the provided document context. 
 Be precise and cite specific sources. If the context doesn't contain enough information, say so clearly.
 
 Format your response professionally and include references to the source documents when making claims."""
         
-        user_prompt = f"""Based on the following document excerpts, please answer this question:
-
-Question: {query}
-
-Document Context:
-{context}
-
-Please provide a clear, well-sourced answer based on the documents above."""
+        # Use hardened prompt function
+        system_prompt, user_prompt = harden_prompt(query, context, system_prompt_base)
         
         logger.info(f"Generating answer with {len(context_chunks)} context chunks")
         
@@ -125,9 +123,24 @@ Please provide a clear, well-sourced answer based on the documents above."""
             )
             
             answer = response.choices[0].message.content.strip()
-            logger.info(f"Generated answer ({len(answer)} characters)")
             
-            return answer
+            # Calculate actual cost from usage
+            usage = response.usage
+            input_tokens = usage.prompt_tokens if usage else 0
+            output_tokens = usage.completion_tokens if usage else 0
+            
+            # Cost calculation (GPT-4-turbo pricing)
+            input_cost = (input_tokens / 1000) * 0.01  # $0.01 per 1K input tokens
+            output_cost = (output_tokens / 1000) * 0.03  # $0.03 per 1K output tokens
+            llm_cost = input_cost + output_cost
+            
+            logger.info(
+                f"Generated answer ({len(answer)} characters, "
+                f"{input_tokens} input tokens, {output_tokens} output tokens, "
+                f"cost: ${llm_cost:.4f})"
+            )
+            
+            return answer, llm_cost
             
         except Exception as e:
             logger.error(f"Error generating answer: {str(e)}")
@@ -155,10 +168,21 @@ Please provide a clear, well-sourced answer based on the documents above."""
         # Step 1: Retrieve relevant chunks
         chunks = self.search(query, top_k=top_k, filter_dict=filter_dict)
         
-        # Step 2: Generate answer with context
-        answer = self.generate_answer(query, chunks)
+        # Step 2: Generate answer with context (returns answer and cost)
+        answer, llm_cost = self.generate_answer(query, chunks)
         
-        # Step 3: Format sources
+        # Step 3: Estimate embedding cost
+        query_length = len(query.split())
+        embedding_tokens = query_length * 1.3  # Approximation
+        embedding_cost = (embedding_tokens / 1000) * 0.00013  # text-embedding-3-large
+        
+        # Step 4: Estimate Pinecone cost (rough estimate)
+        pinecone_cost = top_k * 0.0001
+        
+        # Total cost
+        total_cost = embedding_cost + llm_cost + pinecone_cost
+        
+        # Step 5: Format sources
         sources = []
         for chunk in chunks:
             metadata = chunk.get('metadata', {})
@@ -172,7 +196,13 @@ Please provide a clear, well-sourced answer based on the documents above."""
         return {
             'answer': answer,
             'sources': sources,
-            'query': query
+            'query': query,
+            'cost_usd': total_cost,
+            'cost_breakdown': {
+                'embedding': embedding_cost,
+                'llm': llm_cost,
+                'pinecone': pinecone_cost
+            }
         }
 
 

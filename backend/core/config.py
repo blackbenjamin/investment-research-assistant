@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     
+    # Security Configuration
+    API_KEYS: str = ""  # Comma-separated list of valid API keys
+    MAX_DAILY_COST_USD: float = 20.0  # Daily cost limit in USD
+    COST_RESET_HOUR: int = 0  # Hour (UTC) to reset daily costs
+    
     # OpenAI Configuration
     OPENAI_API_KEY: str
     OPENAI_MODEL: str = "gpt-4-turbo-preview"
@@ -59,6 +64,13 @@ class Settings(BaseSettings):
             origins.extend(additional_origins)
         
         return origins
+    
+    @property
+    def VALID_API_KEYS(self) -> List[str]:
+        """Return list of valid API keys"""
+        if not self.API_KEYS:
+            return []
+        return [key.strip() for key in self.API_KEYS.split(",") if key.strip()]
 
 
 # Create global settings instance

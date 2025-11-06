@@ -2,10 +2,14 @@
 Investment Research Assistant - FastAPI Backend
 Main application entry point
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from api.routes import router as api_router
 from core.config import settings
@@ -16,6 +20,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -44,14 +51,61 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS
+# Add rate limiter to app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Configure CORS with specific methods and headers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],  # Specific methods only
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],  # Specific headers only
 )
+
+# API Key Authentication Middleware
+@app.middleware("http")
+async def verify_api_key(request: Request, call_next):
+    """Verify API key for protected endpoints"""
+    # Skip auth for health check endpoints
+    if request.url.path in ["/", "/health", "/docs", "/openapi.json", "/redoc"]:
+        return await call_next(request)
+    
+    # Check if API keys are configured
+    valid_keys = settings.VALID_API_KEYS
+    if valid_keys:
+        # Get API key from header
+        api_key = request.headers.get("X-API-Key") or request.headers.get("Authorization", "").replace("Bearer ", "")
+        
+        if not api_key or api_key not in valid_keys:
+            logger.warning(f"Invalid API key attempt from {request.client.host if request.client else 'unknown'}")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid or missing API key. Please provide a valid X-API-Key header."}
+            )
+        
+        # Store API key in request state for rate limiting/tracking
+        request.state.api_key = api_key
+    
+    return await call_next(request)
+
+# Request size limit middleware
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    """Limit request body size to prevent DoS attacks"""
+    max_size = 1024 * 1024  # 1MB
+    
+    if request.headers.get("content-length"):
+        content_length = int(request.headers["content-length"])
+        if content_length > max_size:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Request body too large. Maximum size: 1MB"}
+            )
+    
+    response = await call_next(request)
+    return response
 
 # Include API routes
 app.include_router(api_router, prefix="/api/v1")

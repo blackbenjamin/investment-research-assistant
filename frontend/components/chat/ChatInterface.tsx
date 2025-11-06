@@ -18,13 +18,22 @@ export default function ChatInterface({}: ChatInterfaceProps) {
     const fetchDocuments = async () => {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const apiKey = process.env.NEXT_PUBLIC_API_KEY || "";
+        
         console.log(`[ChatInterface] Fetching documents from: ${apiUrl}/api/v1/documents`);
+        
+        const headers: HeadersInit = {
+          "Content-Type": "application/json",
+        };
+        
+        // Add API key if configured
+        if (apiKey) {
+          headers["X-API-Key"] = apiKey;
+        }
         
         const response = await fetch(`${apiUrl}/api/v1/documents`, {
           method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: headers,
         });
         
         console.log(`[ChatInterface] Documents response status: ${response.status}`);
@@ -60,13 +69,22 @@ export default function ChatInterface({}: ChatInterfaceProps) {
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || "";
+      
       console.log(`[ChatInterface] Fetching from: ${apiUrl}/api/v1/query`);
+      
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+      
+      // Add API key if configured
+      if (apiKey) {
+        headers["X-API-Key"] = apiKey;
+      }
       
       const response = await fetch(`${apiUrl}/api/v1/query`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: headers,
         body: JSON.stringify({
           query: query,
           top_k: 5,

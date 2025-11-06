@@ -126,6 +126,29 @@ Once the backend is running, visit:
 - Environment variable management
 - Input validation via Pydantic models
 
+## 🚀 Deployment
+
+### Frontend (Vercel)
+
+Deploy the frontend to Vercel in minutes:
+
+1. **Import from GitHub**: Go to [vercel.com/new](https://vercel.com/new) and import your repo
+2. **Set Root Directory**: `frontend`
+3. **Add Environment Variable**: `NEXT_PUBLIC_API_URL` pointing to your backend
+4. **Deploy**: Click deploy and you're done!
+
+See [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md) for detailed instructions.
+
+### Backend (Railway / Render / Fly.io)
+
+The backend needs to be deployed separately. See deployment guide for options.
+
+**Quick Railway Setup:**
+- New Project → Deploy from GitHub
+- Root Directory: `backend`
+- Add environment variables (OpenAI, Pinecone API keys)
+- Deploy!
+
 ## 🚦 Roadmap
 
 ### Week 3 (Future)
