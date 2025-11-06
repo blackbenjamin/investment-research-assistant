@@ -67,6 +67,8 @@ class Source(BaseModel):
     page_number: int
     text: str
     score: float
+    search_method: Optional[str] = Field(default="semantic", description="Search method: semantic, keyword, or hybrid")
+    matched_keywords: Optional[List[str]] = Field(default=None, description="Keywords that matched (if keyword/hybrid search)")
 
 
 class QueryResponse(BaseModel):
@@ -151,13 +153,15 @@ async def query_documents(request: QueryRequest, req: Request):
         if cost_info['limit_exceeded']:
             logger.warning(f"Cost limit exceeded after request {request_id}: ${cost_info['daily_total']:.2f}")
         
-        # Format sources
+        # Format sources with search method metadata
         sources = [
             Source(
                 document_name=src['document_name'],
                 page_number=src['page_number'],
                 text=src['text'],
-                score=src['score']
+                score=src['score'],
+                search_method=src.get('search_method', 'semantic'),
+                matched_keywords=src.get('matched_keywords')
             )
             for src in result['sources']
         ]

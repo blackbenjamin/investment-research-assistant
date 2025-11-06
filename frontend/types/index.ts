@@ -3,6 +3,8 @@ export interface Source {
   page_number: number;
   text: string;
   score: number;
+  search_method?: "semantic" | "keyword" | "hybrid";
+  matched_keywords?: string[];
 }
 
 export interface Message {

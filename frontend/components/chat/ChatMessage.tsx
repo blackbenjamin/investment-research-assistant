@@ -158,6 +158,37 @@ interface SourceCardProps {
 function SourceCard({ source, index }: SourceCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Get search method indicator
+  const getSearchMethodBadge = () => {
+    const method = source.search_method || 'semantic';
+    const badges = {
+      semantic: {
+        icon: '✨',
+        label: 'Semantic',
+        color: 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+      },
+      keyword: {
+        icon: '🔍',
+        label: 'Keyword',
+        color: 'bg-green-500/20 text-green-400 border-green-500/30'
+      },
+      hybrid: {
+        icon: '🔥',
+        label: 'Hybrid',
+        color: 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+      }
+    };
+
+    const badge = badges[method as keyof typeof badges] || badges.semantic;
+    
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${badge.color}`}>
+        <span>{badge.icon}</span>
+        <span>{badge.label}</span>
+      </span>
+    );
+  };
+
   return (
     <div className="rounded-lg border border-slate-700 bg-slate-800/50 overflow-hidden">
       <button
@@ -169,12 +200,21 @@ function SourceCard({ source, index }: SourceCardProps) {
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500/20 text-xs font-semibold text-blue-400 border border-blue-500/30">
               {index + 1}
             </div>
-            <div>
+            <div className="flex-1">
               <div className="font-semibold text-slate-200">
                 {source.document_name}
               </div>
-              <div className="text-xs text-slate-400">
-                Page {source.page_number} • Relevance: {(source.score * 100).toFixed(1)}%
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-slate-400">
+                  Page {source.page_number} • Relevance: {(source.score * 100).toFixed(1)}%
+                </span>
+                {getSearchMethodBadge()}
+                {source.matched_keywords && source.matched_keywords.length > 0 && (
+                  <span className="text-xs text-slate-500">
+                    • Matched: {source.matched_keywords.slice(0, 2).join(', ')}
+                    {source.matched_keywords.length > 2 && '...'}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -204,4 +244,3 @@ function SourceCard({ source, index }: SourceCardProps) {
     </div>
   );
 }
-
