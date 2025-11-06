@@ -153,18 +153,26 @@ async def query_documents(request: QueryRequest, req: Request):
         if cost_info['limit_exceeded']:
             logger.warning(f"Cost limit exceeded after request {request_id}: ${cost_info['daily_total']:.2f}")
         
-        # Format sources with search method metadata
-        sources = [
-            Source(
-                document_name=src['document_name'],
-                page_number=src['page_number'],
-                text=src['text'],
-                score=src['score'],
-                search_method=src.get('search_method', 'semantic'),
-                matched_keywords=src.get('matched_keywords')
-            )
-            for src in result['sources']
-        ]
+        # For suspicious queries (threat_score > 0.5), suppress sources to prevent information leakage
+        # Still provide an answer, but don't expose document chunks
+        should_suppress_sources = validation_result.threat_score > 0.5
+        
+        if should_suppress_sources:
+            logger.warning(f"Suppressing sources for suspicious query (threat_score={validation_result.threat_score:.2f})")
+            sources = []
+        else:
+            # Format sources with search method metadata
+            sources = [
+                Source(
+                    document_name=src['document_name'],
+                    page_number=src['page_number'],
+                    text=src['text'],
+                    score=src['score'],
+                    search_method=src.get('search_method', 'semantic'),
+                    matched_keywords=src.get('matched_keywords')
+                )
+                for src in result['sources']
+            ]
         
         return QueryResponse(
             answer=result['answer'],

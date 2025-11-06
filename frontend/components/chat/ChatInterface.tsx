@@ -58,15 +58,53 @@ export default function ChatInterface({}: ChatInterfaceProps) {
     fetchDocuments();
   }, []);
 
-  // Auto-scroll to bottom when messages change or when loading state changes
+  // Auto-scroll behavior:
+  // - When user sends a message: scroll to show their message
+  // - When assistant response arrives: scroll so response appears at top of visible area
   useEffect(() => {
-    if (messagesEndRef.current && messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTo({
-        top: messagesContainerRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }
-  }, [messages, isLoading]);
+    if (!messagesContainerRef.current || messages.length === 0) return;
+
+    const container = messagesContainerRef.current;
+    const lastMessage = messages[messages.length - 1];
+
+    // Small delay to ensure DOM has updated
+    setTimeout(() => {
+      if (lastMessage && lastMessage.role === "assistant") {
+        // Find the last assistant message element and scroll it to the top
+        const messageElements = container.querySelectorAll('[data-message-id]');
+        if (messageElements.length > 0) {
+          const lastElement = messageElements[messageElements.length - 1] as HTMLElement;
+          
+          // Calculate position relative to container
+          const containerRect = container.getBoundingClientRect();
+          const elementRect = lastElement.getBoundingClientRect();
+          const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
+          
+          // Scroll so the message appears at the top of the visible area
+          container.scrollTo({
+            top: relativeTop - 20, // 20px padding from top
+            behavior: "smooth",
+          });
+        }
+      } else if (lastMessage && lastMessage.role === "user") {
+        // For user messages, scroll to show them (but not all the way to bottom)
+        const messageElements = container.querySelectorAll('[data-message-id]');
+        if (messageElements.length > 0) {
+          const lastElement = messageElements[messageElements.length - 1] as HTMLElement;
+          const containerRect = container.getBoundingClientRect();
+          const elementRect = lastElement.getBoundingClientRect();
+          const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
+          
+          // Position user message slightly above bottom so legend is still visible
+          const targetScroll = relativeTop - (container.clientHeight - 150);
+          container.scrollTo({
+            top: Math.max(0, targetScroll),
+            behavior: "smooth",
+          });
+        }
+      }
+    }, 50);
+  }, [messages]);
 
   const handleSendMessage = async (query: string) => {
     // Add user message
@@ -284,7 +322,9 @@ export default function ChatInterface({}: ChatInterfaceProps) {
           ) : (
             <div className="space-y-6">
               {messages.map((message) => (
-                <ChatMessage key={message.id} message={message} />
+                <div key={message.id} data-message-id={message.id}>
+                  <ChatMessage message={message} />
+                </div>
               ))}
               {isLoading && (
                 <div className="flex items-start gap-3">
