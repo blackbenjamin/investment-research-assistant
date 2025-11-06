@@ -53,7 +53,8 @@ class Settings(BaseSettings):
             "http://localhost:3001",
             "http://127.0.0.1:3000",
             "http://127.0.0.1:3001",
-            "https://projects.benjaminblack.consulting"
+            "https://projects.benjaminblack.consulting",
+            "https://investment-research-assistant.vercel.app"
         ]
         
         # Add CORS_ORIGINS from environment variable if set (comma-separated)
