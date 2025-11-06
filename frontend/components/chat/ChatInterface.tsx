@@ -12,6 +12,7 @@ export default function ChatInterface({}: ChatInterfaceProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
+  const [useReranking, setUseReranking] = useState(true); // Default to enabled
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -138,7 +139,7 @@ export default function ChatInterface({}: ChatInterfaceProps) {
         body: JSON.stringify({
           query: query,
           top_k: 5,
-          use_reranking: false,
+          use_reranking: useReranking,
         }),
       });
 
@@ -364,7 +365,12 @@ export default function ChatInterface({}: ChatInterfaceProps) {
 
         {/* Input Area */}
         <div className="border-t border-slate-700 bg-slate-800/50 px-6 py-4">
-          <ChatInput onSend={handleSendMessage} disabled={isLoading} />
+          <ChatInput 
+            onSend={handleSendMessage} 
+            disabled={isLoading}
+            useReranking={useReranking}
+            onRerankingChange={setUseReranking}
+          />
         </div>
 
         {/* Search Method Legend */}

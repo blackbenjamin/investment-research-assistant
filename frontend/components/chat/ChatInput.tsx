@@ -5,9 +5,16 @@ import { useState, KeyboardEvent, useRef, useEffect } from "react";
 interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
+  useReranking?: boolean;
+  onRerankingChange?: (value: boolean) => void;
 }
 
-export default function ChatInput({ onSend, disabled = false }: ChatInputProps) {
+export default function ChatInput({ 
+  onSend, 
+  disabled = false, 
+  useReranking = true, 
+  onRerankingChange 
+}: ChatInputProps) {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -73,6 +80,22 @@ export default function ChatInput({ onSend, disabled = false }: ChatInputProps) 
           />
         </svg>
       </button>
+      
+      {/* Reranking Toggle */}
+      {onRerankingChange && (
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer hover:text-slate-300 transition-colors">
+            <input
+              type="checkbox"
+              checked={useReranking}
+              onChange={(e) => onRerankingChange(e.target.checked)}
+              disabled={disabled}
+              className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <span>Enable reranking</span>
+          </label>
+        </div>
+      )}
     </div>
   );
 }
