@@ -317,7 +317,7 @@ export default function ChatInterface({}: ChatInterfaceProps) {
         <div className="border-t border-slate-700 bg-slate-800/30 px-6 py-3">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-xs">
             <span className="text-slate-500 font-medium shrink-0">Search Methods:</span>
-            <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+            <div className="flex flex-wrap items-center justify-between sm:justify-around gap-4 sm:gap-6 flex-1">
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border bg-purple-500/20 text-purple-400 border-purple-500/30">
                   <span>✨</span>
