@@ -24,6 +24,12 @@ except ImportError:
     COHERE_AVAILABLE = False
     logger.warning("Cohere not available. Reranking will be disabled.")
 
+# Import query analysis types
+try:
+    from core.security import QueryAnalysisResult
+except ImportError:
+    QueryAnalysisResult = None
+
 
 class RAGService:
     """Service for RAG-based question answering"""
@@ -334,7 +340,8 @@ class RAGService:
         self,
         query: str,
         context_chunks: List[Dict[str, Any]],
-        max_tokens: int = 1000
+        max_tokens: int = 1000,
+        query_analysis: Optional[Any] = None
     ) -> Tuple[str, float]:
         """
         Generate answer using LLM with retrieved context
@@ -373,6 +380,19 @@ class RAGService:
 Be precise and cite specific sources. If the context doesn't contain enough information, say so clearly.
 
 Format your response professionally and include references to the source documents when making claims."""
+        
+        # Enhance prompt for multi-part questions if detected
+        if query_analysis and hasattr(query_analysis, 'is_multi_part') and query_analysis.is_multi_part:
+            system_prompt_base += f"""
+
+IMPORTANT: This query contains multiple parts ({query_analysis.question_count} parts detected). 
+- Address ALL aspects of the question comprehensively
+- Organize your response to clearly cover each part
+- Use clear structure (e.g., numbered points or sections) if multiple distinct questions are present
+- Ensure each part of the question receives adequate attention"""
+            
+            if query_analysis.connectors and 'comparison' in query_analysis.connectors:
+                system_prompt_base += "\n- This appears to be a comparison question. Provide a clear side-by-side comparison with specific details from the documents."
         
         # Use hardened prompt function
         system_prompt, user_prompt = harden_prompt(query, context, system_prompt_base)
@@ -419,7 +439,8 @@ Format your response professionally and include references to the source documen
         query: str,
         top_k: int = 5,
         use_reranking: bool = False,
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        query_analysis: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         Complete RAG pipeline: retrieve context and generate answer
@@ -427,8 +448,9 @@ Format your response professionally and include references to the source documen
         Args:
             query: User's question
             top_k: Number of chunks to retrieve
-            use_reranking: Whether to use reranking (future feature)
+            use_reranking: Whether to use reranking
             filter_dict: Optional metadata filters
+            query_analysis: Optional QueryAnalysisResult to improve prompts
             
         Returns:
             Dict with answer, sources, and query
@@ -444,7 +466,8 @@ Format your response professionally and include references to the source documen
             logger.info(f"Reranked {len(chunks)} results using Cohere")
         
         # Step 3: Generate answer with context (returns answer and cost)
-        answer, llm_cost = self.generate_answer(query, chunks)
+        # Pass query_analysis to improve prompts for multi-part questions
+        answer, llm_cost = self.generate_answer(query, chunks, query_analysis=query_analysis)
         
         # Step 4: Estimate embedding cost
         query_length = len(query.split())

@@ -19,6 +19,15 @@ class QueryValidationResult(BaseModel):
     threat_score: float = 0.0  # 0.0 to 1.0, higher = more suspicious
 
 
+class QueryAnalysisResult(BaseModel):
+    """Result of query analysis"""
+    is_multi_part: bool
+    question_count: int
+    detected_parts: List[str] = []
+    complexity_score: float = 0.0  # 0.0 to 1.0, higher = more complex
+    connectors: List[str] = []  # Connectors found (and, or, vs, etc.)
+
+
 # Injection patterns to detect
 INJECTION_PATTERNS = [
     # Direct prompt injection attempts
@@ -212,6 +221,127 @@ def sanitize_for_prompt(text: str, max_length: Optional[int] = None) -> str:
         sanitized = sanitized[:max_length]
     
     return sanitized
+
+
+def analyze_query(query: str) -> QueryAnalysisResult:
+    """
+    Analyze query to detect multi-part questions and complexity.
+    
+    Detects:
+    - Multiple questions separated by connectors (and, or, vs, compare, etc.)
+    - Question marks indicating multiple questions
+    - Comparison phrases (compare, vs, versus, difference between)
+    - Multiple clauses separated by commas
+    
+    Args:
+        query: User query to analyze
+        
+    Returns:
+        QueryAnalysisResult with analysis information
+    """
+    if not query or not isinstance(query, str):
+        return QueryAnalysisResult(
+            is_multi_part=False,
+            question_count=0,
+            complexity_score=0.0
+        )
+    
+    query = query.strip()
+    complexity_score = 0.0
+    connectors = []
+    detected_parts = []
+    
+    # Common connectors that indicate multi-part questions
+    connector_patterns = [
+        (r'\b(and|&)\b', 'and'),
+        (r'\b(or)\b', 'or'),
+        (r'\b(vs|versus|compared to|compared with|compare)\b', 'comparison'),
+        (r'\b(difference between|differences between)\b', 'comparison'),
+        (r'\b(then|also|additionally|plus|as well as)\b', 'addition'),
+        (r'\b(followed by|after that|next)\b', 'sequence'),
+    ]
+    
+    # Find connectors
+    for pattern, connector_type in connector_patterns:
+        matches = re.findall(pattern, query, re.IGNORECASE)
+        if matches:
+            connectors.append(connector_type)
+            complexity_score += 0.2
+    
+    # Count question marks (multiple questions)
+    question_mark_count = query.count('?')
+    if question_mark_count > 1:
+        complexity_score += 0.3
+        detected_parts = re.split(r'\?+', query)
+        detected_parts = [p.strip() for p in detected_parts if p.strip()]
+    
+    # Detect comparison phrases
+    comparison_patterns = [
+        r'compare.*?to',
+        r'compare.*?with',
+        r'difference.*?between',
+        r'versus|vs',
+        r'better.*?than',
+        r'worse.*?than',
+    ]
+    
+    for pattern in comparison_patterns:
+        if re.search(pattern, query, re.IGNORECASE):
+            complexity_score += 0.25
+            if 'comparison' not in connectors:
+                connectors.append('comparison')
+    
+    # Split by common connectors if no question marks found
+    if question_mark_count <= 1:
+        # Split by "and", "or", commas (with context)
+        parts = re.split(r'\s+(?:and|or|,)\s+', query, flags=re.IGNORECASE)
+        if len(parts) > 1:
+            # Filter out very short parts (likely false positives)
+            parts = [p.strip() for p in parts if len(p.strip()) > 10]
+            if len(parts) > 1:
+                detected_parts = parts
+                complexity_score += 0.2
+    
+    # Detect clauses separated by commas (if substantial)
+    if not detected_parts and ',' in query:
+        parts = [p.strip() for p in query.split(',') if len(p.strip()) > 15]
+        if len(parts) > 1:
+            detected_parts = parts
+            complexity_score += 0.15
+    
+    # Detect "what is X and Y" patterns
+    what_is_pattern = r'what (?:is|are|was|were)\s+(.+?)\s+(?:and|or|,)\s+(.+?)(?:\?|$)'
+    what_is_match = re.search(what_is_pattern, query, re.IGNORECASE)
+    if what_is_match:
+        detected_parts = [f"what is {what_is_match.group(1)}", f"what is {what_is_match.group(2)}"]
+        complexity_score += 0.2
+    
+    # Calculate question count
+    question_count = max(1, len(detected_parts)) if detected_parts else 1
+    
+    # Normalize complexity score
+    complexity_score = min(complexity_score, 1.0)
+    
+    # Determine if multi-part
+    is_multi_part = (
+        question_mark_count > 1 or
+        len(detected_parts) > 1 or
+        'comparison' in connectors or
+        complexity_score > 0.3
+    )
+    
+    logger.debug(
+        f"Query analysis: multi_part={is_multi_part}, "
+        f"question_count={question_count}, complexity={complexity_score:.2f}"
+    )
+    
+    return QueryAnalysisResult(
+        is_multi_part=is_multi_part,
+        question_count=question_count,
+        detected_parts=detected_parts[:5],  # Limit to 5 parts
+        complexity_score=complexity_score,
+        connectors=list(set(connectors))  # Remove duplicates
+    )
 
 
 def validate_top_k(top_k: Optional[int], max_top_k: int = 20) -> int:

@@ -12,10 +12,12 @@ from pathlib import Path
 
 from services.rag_service import RAGService
 from core.security import (
-    validate_query,
-    QueryValidationResult,
-    validate_top_k,
-    sanitize_filename
+    validate_query, 
+    QueryValidationResult, 
+    validate_top_k, 
+    sanitize_filename,
+    analyze_query,
+    QueryAnalysisResult
 )
 from core.cost_tracker import (
     check_cost_limit,
@@ -126,6 +128,17 @@ async def query_documents(request: QueryRequest, req: Request):
                 detail=f"Invalid query: {', '.join(validation_result.warnings)}"
             )
         
+        # Analyze query for multi-part questions
+        analysis_result: QueryAnalysisResult = analyze_query(validation_result.sanitized_query)
+        
+        # Log analysis results
+        if analysis_result.is_multi_part:
+            logger.info(
+                f"Multi-part query detected: {analysis_result.question_count} parts, "
+                f"complexity={analysis_result.complexity_score:.2f}, "
+                f"connectors={analysis_result.connectors}"
+            )
+        
         # Log security warnings
         if validation_result.warnings:
             logger.warning(f"Query validation warnings: {validation_result.warnings}")
@@ -142,7 +155,8 @@ async def query_documents(request: QueryRequest, req: Request):
         result = rag_service.query(
             query=validation_result.sanitized_query,
             top_k=validated_top_k,
-            use_reranking=use_reranking
+            use_reranking=use_reranking,
+            query_analysis=analysis_result  # Pass analysis to improve prompts
         )
         
         # Log if reranking was used
