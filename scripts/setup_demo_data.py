@@ -6,12 +6,32 @@ Processes PDF documents and uploads them to Pinecone.
 Run this ONCE locally before deploying to prepare your demo data.
 
 Usage:
-    python setup_demo_data.py
+    # Option 1: Use virtual environment (recommended)
+    cd backend && source venv/bin/activate && cd .. && python scripts/setup_demo_data.py
+    
+    # Option 2: Use venv Python directly
+    backend/venv/bin/python scripts/setup_demo_data.py
 """
 import sys
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
+
+# Check if we're using the virtual environment
+venv_python = Path(__file__).parent.parent / 'backend' / 'venv' / 'bin' / 'python'
+if venv_python.exists():
+    current_python = Path(sys.executable)
+    if 'venv' not in str(current_python):
+        print("⚠️  Warning: Not using virtual environment Python!")
+        print(f"   Current Python: {current_python}")
+        print(f"   Recommended: {venv_python}")
+        print()
+        print("Please run the script using the virtual environment:")
+        print("   cd backend && source venv/bin/activate && cd .. && python scripts/setup_demo_data.py")
+        print("   OR")
+        print(f"   {venv_python} scripts/setup_demo_data.py")
+        print()
+        sys.exit(1)
 
 # Load environment variables from backend/.env
 backend_dir = Path(__file__).parent.parent / 'backend'
