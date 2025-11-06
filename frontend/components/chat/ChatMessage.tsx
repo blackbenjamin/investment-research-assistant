@@ -2,9 +2,55 @@
 
 import { useState } from "react";
 import { Message, Source } from "../../types";
+import { BlockMath } from "react-katex";
+import "katex/dist/katex.min.css";
 
 interface ChatMessageProps {
   message: Message;
+}
+
+// Helper function to render content with LaTeX support
+function renderContentWithMath(content: string) {
+  // Split by LaTeX blocks (\[ ... \])
+  const parts: (string | JSX.Element)[] = [];
+  // Match \[ ... \] blocks, handling multiline content
+  const regex = /\\\[([\s\S]*?)\\\]/g;
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = regex.exec(content)) !== null) {
+    // Add text before the LaTeX block
+    if (match.index > lastIndex) {
+      const textBefore = content.substring(lastIndex, match.index);
+      if (textBefore.trim()) {
+        parts.push(<span key={key++} className="whitespace-pre-wrap">{textBefore}</span>);
+      }
+    }
+
+    // Add the LaTeX block - preserve whitespace but trim edges
+    const latexContent = match[1].trim();
+    parts.push(
+      <BlockMath key={key++} math={latexContent} />
+    );
+
+    lastIndex = regex.lastIndex;
+  }
+
+  // Add remaining text after the last LaTeX block
+  if (lastIndex < content.length) {
+    const textAfter = content.substring(lastIndex);
+    if (textAfter.trim()) {
+      parts.push(<span key={key++} className="whitespace-pre-wrap">{textAfter}</span>);
+    }
+  }
+
+  // If no LaTeX blocks found, return original content
+  if (parts.length === 0) {
+    return <span className="whitespace-pre-wrap">{content}</span>;
+  }
+
+  return <>{parts}</>;
 }
 
 export default function ChatMessage({ message }: ChatMessageProps) {
@@ -60,7 +106,9 @@ export default function ChatMessage({ message }: ChatMessageProps) {
               : "bg-slate-800 border border-slate-700 text-slate-100 shadow-sm"
           }`}
         >
-          <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+          <div className="whitespace-pre-wrap leading-relaxed">
+            {renderContentWithMath(message.content)}
+          </div>
         </div>
 
         {/* Sources for assistant messages */}
