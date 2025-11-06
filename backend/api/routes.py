@@ -161,6 +161,17 @@ async def query_documents(request: QueryRequest, req: Request):
             logger.warning(f"Suppressing sources for suspicious query (threat_score={validation_result.threat_score:.2f})")
             sources = []
         else:
+            # Filter sources: only include those with relevance score >= 30% (0.30)
+            # This prevents low-quality matches from being displayed
+            MIN_RELEVANCE_SCORE = 0.30
+            filtered_sources = [
+                src for src in result['sources']
+                if src.get('score', 0.0) >= MIN_RELEVANCE_SCORE
+            ]
+            
+            if len(filtered_sources) < len(result['sources']):
+                logger.info(f"Filtered out {len(result['sources']) - len(filtered_sources)} sources below {MIN_RELEVANCE_SCORE*100:.0f}% relevance threshold")
+            
             # Format sources with search method metadata
             sources = [
                 Source(
@@ -171,7 +182,7 @@ async def query_documents(request: QueryRequest, req: Request):
                     search_method=src.get('search_method', 'semantic'),
                     matched_keywords=src.get('matched_keywords')
                 )
-                for src in result['sources']
+                for src in filtered_sources
             ]
         
         return QueryResponse(
