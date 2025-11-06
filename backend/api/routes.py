@@ -182,16 +182,36 @@ async def query_documents(request: QueryRequest, req: Request):
             logger.warning(f"Suppressing sources for suspicious query (threat_score={validation_result.threat_score:.2f})")
             sources = []
         else:
-            # Filter sources: only include those with relevance score >= 30% (0.30)
-            # This prevents low-quality matches from being displayed
-            MIN_RELEVANCE_SCORE = 0.30
+            # Filter sources: only include those with relevance score >= threshold
+            # Use lower threshold for comparison queries (they often have lower scores)
+            # Use lower threshold when reranking is used (Cohere scores may be normalized differently)
+            is_comparison = analysis_result.connectors and 'comparison' in analysis_result.connectors
+            use_reranking_flag = result.get('reranked', False)
+            
+            if is_comparison or use_reranking_flag:
+                MIN_RELEVANCE_SCORE = 0.20  # Lower threshold for comparison queries or reranked results
+                logger.info(f"Using lower relevance threshold (20%) for {'comparison query' if is_comparison else 'reranked results'}")
+            else:
+                MIN_RELEVANCE_SCORE = 0.30  # Standard threshold
+            
             filtered_sources = [
                 src for src in result['sources']
                 if src.get('score', 0.0) >= MIN_RELEVANCE_SCORE
             ]
             
             if len(filtered_sources) < len(result['sources']):
-                logger.info(f"Filtered out {len(result['sources']) - len(filtered_sources)} sources below {MIN_RELEVANCE_SCORE*100:.0f}% relevance threshold")
+                logger.info(
+                    f"Filtered out {len(result['sources']) - len(filtered_sources)} sources below {MIN_RELEVANCE_SCORE*100:.0f}% relevance threshold. "
+                    f"Original sources: {len(result['sources'])}, Scores: {[f\"{s.get('score', 0.0):.3f}\" for s in result['sources']]}"
+                )
+            
+            # If no sources pass the threshold but we have sources, log a warning
+            if len(filtered_sources) == 0 and len(result['sources']) > 0:
+                logger.warning(
+                    f"No sources passed relevance threshold ({MIN_RELEVANCE_SCORE*100:.0f}%). "
+                    f"All {len(result['sources'])} sources filtered out. "
+                    f"Score range: {min(s.get('score', 0.0) for s in result['sources']):.3f} - {max(s.get('score', 0.0) for s in result['sources']):.3f}"
+                )
             
             # Format sources with search method metadata
             sources = [
