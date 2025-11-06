@@ -182,79 +182,92 @@ async def query_documents(request: QueryRequest, req: Request):
             logger.warning(f"Suppressing sources for suspicious query (threat_score={validation_result.threat_score:.2f})")
             sources = []
         else:
-            # Filter sources: only include those with relevance score >= threshold
-            # Use lower threshold for comparison queries (they often have lower scores)
-            # Use lower threshold when reranking is used (Cohere scores may be normalized differently)
-            is_comparison = analysis_result.connectors and 'comparison' in analysis_result.connectors
+            # Ensure we have sources to work with
+            raw_sources = result.get('sources', [])
+            logger.info(f"Received {len(raw_sources)} sources from RAG service")
             
-            # Also check if query contains comparison keywords directly (fallback detection)
-            query_lower = validation_result.sanitized_query.lower()
-            if not is_comparison and ('compare' in query_lower or 'vs' in query_lower or 'versus' in query_lower):
-                is_comparison = True
-                logger.info("Comparison query detected via keyword fallback")
-            
-            use_reranking_flag = result.get('reranked', False)
-            
-            logger.info(f"Query analysis: is_comparison={is_comparison}, connectors={analysis_result.connectors}, reranked={use_reranking_flag}")
-            
-            if is_comparison or use_reranking_flag:
-                MIN_RELEVANCE_SCORE = 0.20  # Lower threshold for comparison queries or reranked results
-                logger.info(f"Using lower relevance threshold (20%) for {'comparison query' if is_comparison else 'reranked results'}")
+            if not raw_sources:
+                logger.warning("No sources returned from RAG service")
+                sources = []
             else:
-                MIN_RELEVANCE_SCORE = 0.30  # Standard threshold
-            
-            filtered_sources = [
-                src for src in result['sources']
-                if src.get('score', 0.0) >= MIN_RELEVANCE_SCORE
-            ]
-            
-            if len(filtered_sources) < len(result['sources']):
-                score_list = [f"{s.get('score', 0.0):.3f}" for s in result['sources']]
-                logger.info(
-                    f"Filtered out {len(result['sources']) - len(filtered_sources)} sources below {MIN_RELEVANCE_SCORE*100:.0f}% relevance threshold. "
-                    f"Original sources: {len(result['sources'])}, Scores: {score_list}"
-                )
-            
-            # If no sources pass the threshold but we have sources, check if we should show any
-            if len(filtered_sources) == 0 and len(result['sources']) > 0:
-                max_score = max(s.get('score', 0.0) for s in result['sources'])
-                min_score = min(s.get('score', 0.0) for s in result['sources'])
+                # Filter sources: only include those with relevance score >= threshold
+                # Use lower threshold for comparison queries (they often have lower scores)
+                # Use lower threshold when reranking is used (Cohere scores may be normalized differently)
+                is_comparison = analysis_result.connectors and 'comparison' in analysis_result.connectors
                 
-                logger.warning(
-                    f"No sources passed relevance threshold ({MIN_RELEVANCE_SCORE*100:.0f}%). "
-                    f"All {len(result['sources'])} sources filtered out. "
-                    f"Score range: {min_score:.3f} - {max_score:.3f}"
-                )
+                # Also check if query contains comparison keywords directly (fallback detection)
+                query_lower = validation_result.sanitized_query.lower()
+                if not is_comparison and ('compare' in query_lower or 'vs' in query_lower or 'versus' in query_lower):
+                    is_comparison = True
+                    logger.info("Comparison query detected via keyword fallback")
                 
-                # For comparison queries, show at least the top source even if below threshold
-                # BUT only if the top score is reasonable (>= 0.10) to avoid showing sources for nonsense queries
-                ABSOLUTE_MINIMUM_SCORE = 0.10  # Don't show sources if even the best match is below this
+                use_reranking_flag = result.get('reranked', False)
                 
-                logger.info(f"Checking fallback: is_comparison={is_comparison}, max_score={max_score:.3f}, absolute_min={ABSOLUTE_MINIMUM_SCORE:.3f}")
+                logger.info(f"Query analysis: is_comparison={is_comparison}, connectors={analysis_result.connectors}, reranked={use_reranking_flag}")
                 
-                if is_comparison and max_score >= ABSOLUTE_MINIMUM_SCORE:
-                    logger.info(f"Comparison query: Including top source(s) even if below threshold (top score: {max_score:.3f})")
-                    # Sort by score descending and take top 2
-                    sorted_sources = sorted(result['sources'], key=lambda x: x.get('score', 0.0), reverse=True)
-                    filtered_sources = sorted_sources[:2]  # Take top 2 sources
-                    logger.info(f"Including {len(filtered_sources)} top source(s) for comparison query")
-                elif max_score < ABSOLUTE_MINIMUM_SCORE:
-                    logger.info(f"Top source score ({max_score:.3f}) below absolute minimum ({ABSOLUTE_MINIMUM_SCORE:.3f}). Likely a nonsense query - not showing sources.")
-                elif not is_comparison:
-                    logger.info(f"Not a comparison query and no sources passed threshold. Not showing sources.")
-            
-            # Format sources with search method metadata
-            sources = [
-                Source(
-                    document_name=src['document_name'],
-                    page_number=src['page_number'],
-                    text=src['text'],
-                    score=src['score'],
-                    search_method=src.get('search_method', 'semantic'),
-                    matched_keywords=src.get('matched_keywords')
-                )
-                for src in filtered_sources
-            ]
+                if is_comparison or use_reranking_flag:
+                    MIN_RELEVANCE_SCORE = 0.20  # Lower threshold for comparison queries or reranked results
+                    logger.info(f"Using lower relevance threshold (20%) for {'comparison query' if is_comparison else 'reranked results'}")
+                else:
+                    MIN_RELEVANCE_SCORE = 0.30  # Standard threshold
+                
+                # Log all scores before filtering
+                score_list = [f"{s.get('score', 0.0):.3f}" for s in raw_sources]
+                logger.info(f"All source scores before filtering: {score_list}")
+                
+                filtered_sources = [
+                    src for src in raw_sources
+                    if src.get('score', 0.0) >= MIN_RELEVANCE_SCORE
+                ]
+                
+                if len(filtered_sources) < len(raw_sources):
+                    logger.info(
+                        f"Filtered out {len(raw_sources) - len(filtered_sources)} sources below {MIN_RELEVANCE_SCORE*100:.0f}% relevance threshold. "
+                        f"Original sources: {len(raw_sources)}, Filtered: {len(filtered_sources)}"
+                    )
+                
+                # If no sources pass the threshold but we have sources, check if we should show any
+                if len(filtered_sources) == 0 and len(raw_sources) > 0:
+                    max_score = max(s.get('score', 0.0) for s in raw_sources)
+                    min_score = min(s.get('score', 0.0) for s in raw_sources)
+                    
+                    logger.warning(
+                        f"No sources passed relevance threshold ({MIN_RELEVANCE_SCORE*100:.0f}%). "
+                        f"All {len(raw_sources)} sources filtered out. "
+                        f"Score range: {min_score:.3f} - {max_score:.3f}"
+                    )
+                    
+                    # For comparison queries, show at least the top source even if below threshold
+                    # BUT only if the top score is reasonable (>= 0.10) to avoid showing sources for nonsense queries
+                    ABSOLUTE_MINIMUM_SCORE = 0.10  # Don't show sources if even the best match is below this
+                    
+                    logger.info(f"Checking fallback: is_comparison={is_comparison}, max_score={max_score:.3f}, absolute_min={ABSOLUTE_MINIMUM_SCORE:.3f}")
+                    
+                    if is_comparison and max_score >= ABSOLUTE_MINIMUM_SCORE:
+                        logger.info(f"Comparison query: Including top source(s) even if below threshold (top score: {max_score:.3f})")
+                        # Sort by score descending and take top 2
+                        sorted_sources = sorted(raw_sources, key=lambda x: x.get('score', 0.0), reverse=True)
+                        filtered_sources = sorted_sources[:2]  # Take top 2 sources
+                        logger.info(f"Including {len(filtered_sources)} top source(s) for comparison query")
+                    elif max_score < ABSOLUTE_MINIMUM_SCORE:
+                        logger.info(f"Top source score ({max_score:.3f}) below absolute minimum ({ABSOLUTE_MINIMUM_SCORE:.3f}). Likely a nonsense query - not showing sources.")
+                    elif not is_comparison:
+                        logger.info(f"Not a comparison query and no sources passed threshold. Not showing sources.")
+                
+                # Format sources with search method metadata
+                sources = [
+                    Source(
+                        document_name=src['document_name'],
+                        page_number=src['page_number'],
+                        text=src['text'],
+                        score=src['score'],
+                        search_method=src.get('search_method', 'semantic'),
+                        matched_keywords=src.get('matched_keywords')
+                    )
+                    for src in filtered_sources
+                ]
+                
+                logger.info(f"Final sources count: {len(sources)}")
         
         return QueryResponse(
             answer=result['answer'],
