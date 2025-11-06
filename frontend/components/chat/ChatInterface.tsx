@@ -227,7 +227,7 @@ export default function ChatInterface({}: ChatInterfaceProps) {
         </div>
 
         {/* Messages Container */}
-        <div className="h-[600px] overflow-y-auto px-6 py-4 bg-slate-900/50">
+        <div className="h-[500px] overflow-y-auto px-6 py-4 bg-slate-900/50">
           {messages.length === 0 ? (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
