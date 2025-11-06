@@ -304,6 +304,8 @@ export default function ChatInterface({}: ChatInterfaceProps) {
                   </div>
                 </div>
               )}
+              {/* Scroll anchor */}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
