@@ -306,7 +306,7 @@ export default function ChatInterface({}: ChatInterfaceProps) {
                 <div className="flex flex-wrap justify-center gap-2">
                   {[
                     "What is Apple's revenue?",
-                    "What are Microsoft's main risks",
+                    "What are Microsoft's main risks?",
                     "Compare Microsoft's and Apple's revenue",
                   ].map((suggestion) => (
                     <button
